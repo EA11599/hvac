@@ -1,0 +1,489 @@
+<!doctype html>
+<html lang="hr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>Kalkulator hlađenja podatkovnog centra</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Semi+Condensed:wght@500;600&family=DM+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: gore ljepljiva traka s ključnim brojkama; lijevo ulazi po skupinama (toplo/hladno označeno rubom polja), desno rezultati po cjelinama; na mobitelu jedan stupac. */
+:root{
+  --bg:#f3f6f9; --surface:#ffffff; --fg:#14212e; --muted:#566676; --line:#d5dde5;
+  --cold:#0b63b6; --cold-soft:#dcebf9; --hot:#c8560a; --hot-soft:#fdebdc;
+  --spare:#5b6b7b; --err:#b3261e; --ok:#1d7a46; --warn:#a36200;
+  --c-it:#44566a; --c-aux:#9aa9b8; --c-pump:#19a3b8;
+  --f-display:"Barlow Semi Condensed","Arial Narrow",Arial,sans-serif;
+  --f-body:"Barlow","Segoe UI",Arial,sans-serif;
+  --f-mono:"DM Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0e161e; --surface:#16212c; --fg:#e6edf3; --muted:#98a8b7; --line:#2b3a48;
+    --cold:#5aaef5; --cold-soft:#143352; --hot:#ff9a4d; --hot-soft:#40260f;
+    --spare:#8e9dab; --err:#ff8a80; --ok:#5fd08f; --warn:#f0b455;
+    --c-it:#b9c6d3; --c-aux:#62758a; --c-pump:#4fd0e0; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0e161e; --surface:#16212c; --fg:#e6edf3; --muted:#98a8b7; --line:#2b3a48;
+  --cold:#5aaef5; --cold-soft:#143352; --hot:#ff9a4d; --hot-soft:#40260f;
+  --spare:#8e9dab; --err:#ff8a80; --ok:#5fd08f; --warn:#f0b455;
+  --c-it:#b9c6d3; --c-aux:#62758a; --c-pump:#4fd0e0; color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:16px;line-height:1.45;padding-inline:16px;padding-block:20px 40px}
+.wrap{max-width:1120px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+header h1{font-family:var(--f-display);font-weight:600;font-size:1.7rem;line-height:1.15;margin:0;text-wrap:balance}
+header p{margin:6px 0 0;color:var(--muted);max-width:65ch}
+.bar{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;margin-top:14px}
+.btn{font:inherit;font-size:.85rem;color:var(--fg);background:var(--surface);border:1px solid var(--line);border-radius:4px;padding:7px 11px;cursor:pointer}
+.btn:hover{border-color:var(--cold)} .btn:focus-visible{outline:2px solid var(--cold);outline-offset:2px}
+.presets{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.presets span{font-size:.8rem;color:var(--muted)}
+.sum{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);padding:8px 0;border-bottom:1px solid var(--line)}
+.sum .in{display:flex;gap:8px;overflow-x:auto}
+.sum .it{flex:1 0 auto;background:var(--surface);border:1px solid var(--line);border-radius:4px;padding:5px 10px;min-width:96px}
+.sum .k{font-size:.7rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.sum .v{font-family:var(--f-mono);font-variant-numeric:tabular-nums;font-weight:500;white-space:nowrap}
+.sum .it.h .v{color:var(--hot)} .sum .it.c .v{color:var(--cold)}
+.grid{display:grid;grid-template-columns:minmax(0,370px) minmax(0,1fr);gap:18px;align-items:start}
+@media (max-width:820px){.grid{grid-template-columns:minmax(0,1fr)}}
+.col{display:flex;flex-direction:column;gap:14px;min-width:0}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:16px;min-width:0}
+h2,summary.h{font-family:var(--f-display);font-weight:600;font-size:.85rem;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);margin:0}
+h2{margin-bottom:12px}
+details.panel>summary{cursor:pointer;list-style-position:inside}
+details.panel[open]>summary{margin-bottom:12px}
+details.panel>summary:focus-visible{outline:2px solid var(--cold);outline-offset:3px}
+.fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:11px 10px;align-items:end}
+.field.wide{grid-column:1/-1}
+.field label,.field .lbl{display:block;font-size:.85rem;font-weight:500;margin-bottom:4px}
+.inp{display:flex;align-items:stretch;border:1px solid var(--line);border-left:4px solid var(--line);border-radius:4px;background:var(--bg)}
+.inp.hot{border-left-color:var(--hot)} .inp.cold{border-left-color:var(--cold)}
+.inp input,.inp select{flex:1;min-width:0;border:0;background:transparent;color:var(--fg);font-family:var(--f-mono);font-size:.95rem;padding:8px 9px;font-variant-numeric:tabular-nums}
+.inp span{display:flex;align-items:center;padding:0 9px 0 2px;color:var(--muted);font-family:var(--f-mono);font-size:.8rem;white-space:nowrap}
+.inp:focus-within{outline:2px solid var(--cold);outline-offset:1px}
+.inp input:focus,.inp select:focus{outline:none}
+.field.bad .inp{border-color:var(--err)}
+.field .msg{color:var(--err);font-size:.78rem;margin-top:3px}
+.seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;border:1px solid var(--line);border-radius:4px;overflow:hidden}
+.seg label{margin:0;text-align:center;font-family:var(--f-mono);font-size:.85rem;font-weight:400;padding:8px 2px;cursor:pointer;border-left:1px solid var(--line);background:var(--bg)}
+.seg label:first-of-type{border-left:0}
+.seg input{position:absolute;opacity:0;pointer-events:none}
+.seg input:checked + label{background:var(--cold);color:var(--surface);font-weight:500}
+.seg input:focus-visible + label{outline:2px solid var(--fg);outline-offset:-3px}
+.mode{min-width:220px}
+.consts{margin:12px 0 0;font-size:.78rem;color:var(--muted)}
+.res{padding:14px 0;border-top:1px solid var(--line)}
+.res:first-of-type{border-top:0;padding-top:0}
+.res:last-child{padding-bottom:0}
+.res .top{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:4px 12px}
+.res .name{font-weight:600}
+.val{font-family:var(--f-mono);font-variant-numeric:tabular-nums;font-size:1.45rem;font-weight:500;line-height:1.2;margin-top:4px;overflow-wrap:anywhere}
+.val small{font-size:.85rem;color:var(--muted);font-weight:400}
+.val .sec{font-size:.95rem;color:var(--muted);margin-left:10px;white-space:nowrap}
+.res.hot .val{color:var(--hot)} .res.cold .val{color:var(--cold)}
+button.how{font:inherit;font-size:.78rem;color:var(--cold);background:none;border:1px solid var(--line);border-radius:3px;padding:3px 8px;cursor:pointer}
+button.how:hover{border-color:var(--cold)}
+button.how:focus-visible{outline:2px solid var(--cold);outline-offset:2px}
+.formula{margin-top:10px;background:var(--bg);border:1px dashed var(--line);border-radius:4px;padding:10px 12px;font-family:var(--f-mono);font-size:.82rem;overflow-x:auto;white-space:pre-line}
+.facts{display:flex;flex-wrap:wrap;gap:4px 18px;margin-top:8px;font-size:.85rem;color:var(--muted)}
+.facts b{font-family:var(--f-mono);font-weight:500;color:var(--fg)}
+.units{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+.urow{display:flex;gap:10px;align-items:flex-start}
+.urow .tag{font-family:var(--f-mono);font-size:.75rem;color:var(--muted);width:64px;flex:none;padding-top:4px}
+.sq{display:flex;flex-wrap:wrap;gap:5px;min-width:0}
+.sq i{width:24px;height:24px;border-radius:3px;display:block}
+.sq i.n{background:var(--cold)}
+.sq i.s{background:repeating-linear-gradient(45deg,var(--spare) 0 4px,transparent 4px 7px);border:2px solid var(--spare)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:10px;font-size:.8rem;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend .sq i,.legend i.sw{width:14px;height:14px;border-radius:2px;display:block;flex:none}
+.legend b{font-family:var(--f-mono);font-weight:500;color:var(--fg)}
+.tblwrap{overflow-x:auto;margin-top:12px}
+table{border-collapse:collapse;width:100%;font-size:.83rem;font-variant-numeric:tabular-nums}
+th,td{text-align:right;padding:5px 8px;border-bottom:1px solid var(--line);font-family:var(--f-mono);font-weight:400;white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+th{color:var(--muted);font-family:var(--f-body);font-weight:500}
+tr.on td{background:var(--cold-soft);color:var(--cold);font-weight:500}
+.pbar{display:flex;height:22px;border-radius:3px;overflow:hidden;margin-top:12px;gap:2px}
+.pbar i{display:block;min-width:2px}
+.chart{margin-top:12px;width:100%}
+.chart svg{display:block;width:100%;height:auto}
+.chart .g{stroke:var(--line);stroke-width:1}
+.chart .t{fill:var(--muted);font-family:var(--f-mono);font-size:11px}
+.chart .cur{fill:none;stroke:var(--hot);stroke-width:2}
+.chart .ar{fill:var(--cold-soft);stroke:none}
+.chart .th{stroke:var(--cold);stroke-width:1.5;stroke-dasharray:5 4;fill:none}
+.chart .tl{fill:var(--cold);font-family:var(--f-mono);font-size:11px}
+.reco{font-size:1.1rem;font-weight:600;margin-top:4px}
+.scale{display:grid;grid-template-columns:15fr 25fr 20fr;gap:3px;margin-top:10px;font-size:.75rem;color:var(--muted)}
+.scale div{border-top:5px solid var(--line);padding-top:4px}
+.scale div.on{border-top-color:var(--hot);color:var(--fg);font-weight:500}
+.hint{font-size:.8rem;color:var(--muted);margin:8px 0 0;max-width:70ch}
+a{color:var(--cold)}
+.vex{margin:4px 0 0;padding-left:18px;font-size:.85rem;color:var(--muted);max-width:70ch}
+.vex li{margin-top:3px}
+.hint b{color:var(--fg)}
+.alert{color:var(--err);font-size:.9rem;margin:0}
+#copy-fb{width:100%;min-height:160px;font-family:var(--f-mono);font-size:.8rem;background:var(--surface);color:var(--fg);border:1px solid var(--line);border-radius:4px;padding:8px}
+footer{font-size:.85rem;color:var(--muted);border-top:1px solid var(--line);padding-top:14px}
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Preliminarno dimenzioniranje hlađenja modularnog podatkovnog centra</h1>
+    <p>Od toplinskog opterećenja ormara do protoka zraka i vode, cjevovoda, pumpe, broja rashladnih jedinica i godišnje energije.</p>
+    <div class="bar">
+      <div class="seg mode" role="radiogroup" aria-label="Način rada">
+        <input type="radio" name="mode" id="mode-b" value="basic"><label for="mode-b">Osnovni</label>
+        <input type="radio" name="mode" id="mode-e" value="ext" checked><label for="mode-e">Prošireni</label>
+      </div>
+      <div class="presets"><span>Primjeri:</span>
+        <button class="btn" type="button" data-preset="20,10">20 × 10 kW</button>
+        <button class="btn" type="button" data-preset="12,30">12 × 30 kW</button>
+        <button class="btn" type="button" data-preset="8,60">8 × 60 kW</button>
+      </div>
+      <button class="btn" type="button" id="btn-reset">Vrati početne vrijednosti</button>
+      <button class="btn" type="button" id="btn-copy">Kopiraj sažetak</button>
+    </div>
+    <textarea id="copy-fb" readonly hidden aria-label="Sažetak rezultata"></textarea>
+  </header>
+
+  <div class="sum" aria-live="polite"><div class="in" id="sum"></div></div>
+
+  <div class="grid">
+    <div class="col" id="inputs"></div>
+    <div class="col" id="results"></div>
+  </div>
+
+  <footer>Preliminarna procjena s pojednostavljenjima. Nije projektni alat.<br>Samostalni studentski rad. Podaci o proizvodima preuzeti su s javnih stranica vertiv.com u listopadu 2026. i mogu se promijeniti. Ovo nije službeni alat tvrtke Vertiv.</footer>
+</div>
+
+<script>
+/*CALC-START*/
+var DN=[25,32,40,50,65,80,100,125,150,200,250,300];
+var CP_A=1.006, EPS=0.045e-3;
+// približna svojstva pri oko 10 °C: c [kJ/kgK], rho [kg/m3], mu [Pa s]
+var FLUID={"0":{c:4.19,rho:1000,mu:1.31e-3,name:"voda"},
+           "20":{c:3.87,rho:1034,mu:1.95e-3,name:"voda s 20 % etilen-glikola"},
+           "30":{c:3.70,rho:1049,mu:2.8e-3,name:"voda s 30 % etilen-glikola"},
+           "40":{c:3.52,rho:1064,mu:4.0e-3,name:"voda s 40 % etilen-glikola"}};
+function pipe(Vw,Dmm,fl,i){
+  var D=Dmm/1000, v=4*Vw/(Math.PI*D*D), Re=fl.rho*v*D/fl.mu;
+  var lam=Re<2300?64/Re:0.25/Math.pow(Math.log10(EPS/(3.7*D)+5.74/Math.pow(Re,0.9)),2);
+  var R=lam/D*fl.rho*v*v/2;                        // Pa/m
+  var dpPipe=R*i.L*(1+i.loc/100);                  // Pa
+  var dp=dpPipe+i.dpEq*1000;                       // Pa
+  return {D:Dmm,v:v,Re:Re,lam:lam,R:R,dpPipe:dpPipe,dp:dp,P:Vw*dp/(i.etaP/100)/1000};
+}
+function calc(i,ext){
+  var r={};
+  r.QIT=i.n*i.p;
+  r.QITd=ext?r.QIT*(1+i.grow/100):r.QIT;
+  r.Qtot=ext?r.QITd*(1+i.extra/100):r.QIT;
+  r.patm=101325*Math.pow(1-2.25577e-5*(ext?i.alt:0),5.25588);
+  r.rhoA=ext?r.patm/(287.05*(i.Tsup+273.15)):1.2;
+  r.Va=r.QITd/(r.rhoA*CP_A*i.dTa); r.VaH=r.Va*3600;
+  var fl=FLUID[ext?i.gly:"0"]; r.fl=fl;
+  r.m=r.Qtot/(fl.c*i.dTw); r.Vw=r.m/fl.rho; r.VwH=r.Vw*3600;
+  r.d=Math.sqrt(4*r.Vw/(Math.PI*i.v))*1000;
+  r.dnIdx=-1; for(var k=0;k<DN.length;k++){ if(DN[k]>=r.d){r.dnIdx=k;break;} }
+  r.dn=r.dnIdx<0?null:DN[r.dnIdx];
+  r.N=Math.max(1,Math.ceil(r.Qtot/i.cap-1e-9));
+  r.units={"N":r.N,"N+1":r.N+1,"2N":2*r.N,"2(N+1)":2*(r.N+1)};
+  r.reco=i.p<=15?0:(i.p<=40?1:2);
+  if(!ext) return r;
+  r.h=pipe(r.Vw,r.dn||r.d,fl,i);
+  r.cmp=[]; if(r.dnIdx>=0){ for(var j=r.dnIdx-1;j<=r.dnIdx+1;j++){ if(j>=0&&j<DN.length) r.cmp.push(pipe(r.Vw,DN[j],fl,i)); } }
+  r.Pfan=r.Va*i.dpAir/(i.etaF/100)/1000;
+  r.Pch=r.Qtot/i.COP;
+  r.Paux=r.QITd*i.extra/100;
+  r.Ptot=r.QITd+r.Paux+r.Pfan+r.h.P+r.Pch;
+  r.PUE=r.Ptot/r.QITd;
+  r.Tfc=i.Tw-i.appr;
+  var x=i.A>0?(r.Tfc-i.Tm)/i.A:(r.Tfc>=i.Tm?1:-1);
+  r.ffc=x>=1?1:(x<=-1?0:1-Math.acos(x)/Math.PI);
+  r.hfc=8760*r.ffc;
+  r.Ecool=(r.Pfan+r.h.P)*8760+r.Pch*8760*(1-r.ffc);   // kWh
+  r.Eall=(r.QITd+r.Paux)*8760+r.Ecool;
+  r.PUEyr=r.Eall/(r.QITd*8760);
+  r.cost=r.Ecool*i.price;
+  r.saved=r.Pch*8760*r.ffc*i.price;
+  r.tfail=r.rhoA*CP_A*i.Vroom*i.dTallow/r.QITd;       // s
+  return r;
+}
+/*CALC-END*/
+
+// [ključ, id, naziv, jedinica, početno, min, strogo veće od min, max, cijeli broj, ton, skupina]
+var SPEC=[
+ ['n','in-n','Broj ormara','kom','20',0,1,10000,1,'hot',0],
+ ['p','in-p','Snaga po ormaru','kW','10',0,1,1000,0,'hot',0],
+ ['dTa','in-dta','ΔT zraka kroz servere','K','12',0,1,60,0,'hot',0],
+ ['dTw','in-dtw','ΔT hladne vode','K','6',0,1,40,0,'cold',0],
+ ['v','in-v','Brzina vode u cijevi','m/s','2',0,1,10,0,'cold',0],
+ ['cap','in-cap','Kapacitet jedne jedinice','kW','100',0,1,100000,0,'cold',0],
+ ['grow','in-grow','Rezerva za rast','%','20',0,0,500,0,'hot',1],
+ ['extra','in-extra','Dodatna opterećenja','%','8',0,0,200,0,'hot',1],
+ ['alt','in-alt','Nadmorska visina','m','120',0,0,5000,0,'',1],
+ ['Tsup','in-tsup','Temp. dovodnog zraka','°C','24',-20,0,60,0,'',1],
+ ['dpAir','in-dpair','Pad tlaka zraka','Pa','300',0,0,5000,0,'',1],
+ ['etaF','in-etaf','Stupanj dj. ventilatora','%','60',0,1,100,0,'',1],
+ ['L','in-l','Duljina cjevovoda','m','100',0,0,100000,0,'cold',2],
+ ['loc','in-loc','Dodatak za lokalne otpore','%','50',0,0,1000,0,'cold',2],
+ ['dpEq','in-dpeq','Pad tlaka u opremi','kPa','100',0,0,5000,0,'cold',2],
+ ['etaP','in-etap','Stupanj dj. pumpe','%','65',0,1,100,0,'cold',2],
+ ['COP','in-cop','COP rashladnika','','4,5',0,1,30,0,'cold',3],
+ ['Tw','in-tw','Temp. polaza hladne vode','°C','18',-10,0,40,0,'cold',3],
+ ['appr','in-appr','Približenje suhog hladnjaka','K','5',0,0,30,0,'cold',3],
+ ['Tm','in-tm','Srednja godišnja temp.','°C','11,5',-30,0,40,0,'',3],
+ ['A','in-a','Godišnja amplituda','K','10,5',0,0,40,0,'',3],
+ ['price','in-price','Cijena el. energije','€/kWh','0,15',0,0,10,0,'',3],
+ ['Vroom','in-vroom','Volumen zraka u prostoru','m³','400',0,1,1000000,0,'',4],
+ ['dTallow','in-dtallow','Dopušteni porast temp.','K','10',0,1,60,0,'hot',4]
+];
+var GROUPS=['Osnovni ulazi','Opterećenje i zrak','Hidraulika','Energija i klima','Ispad hlađenja'];
+var RECO=['Hlađenje zrakom','Zrak uz in-row jedinice ili hladnjak na stražnjim vratima','Tekućina do čipa uz zrak'];
+var MAXSQ=120, open={}, last=null;
+// Podaci s javnih stranica vertiv.com (brošure Liebert PCW i Liebert CRV), neto osjetni kapacitet u kW
+var SRC={pcw:'https://www.vertiv.com/4a86dc/globalassets/products/thermal-management/room-cooling/liebert-pcw-brochure-english.pdf',
+  crv:'https://www.vertiv.com/globalassets/products/thermal-management/in-row-cooling/liebert-crv-11-50-kw-brochure-english.pdf',
+  dcd:'https://vertiv.com/en-emea/products-catalog/thermal-management/high-density-solutions/vertiv-coolloop-rdhx-',
+  rdhx:'https://www.vertiv.com/en-us/about/news-and-events/corporate-news/vertiv-announces-global-launch-of-chilled-water-rear-door-heat-exchanger-for-ai-and-hpc-applications/',
+  cdu:'https://www.vertiv.com/en-us/products-catalog/thermal-management/high-density-solutions/vertiv-coolchip-cdu/',
+  sm:'https://www.vertiv.com/en-emea/products-catalog/facilities-enclosures-and-racks/integrated-solutions/vertiv-smartmod-max-cw2/'};
+var C_PCW='povratni zrak 26 °C, 40 % r.v.; voda 10/15 °C', C_PCW4='povratni zrak 35 °C, 30 % r.v.; voda 18/26 °C', C_CRV='ulazni zrak 38 °C; voda 7/12 °C';
+var UNITS=[];
+[['PW025',29],['PW030',34.3],['PW035',38.1],['PW040',44],['PW045',47.9],['PW060',68.5],['PW070',74.6],['PW080',87.2],['PW095',105.4],['PW110',120.6],['PW145',144],['PW170',170.9]]
+  .forEach(function(u){UNITS.push({fam:'Liebert PCW',kind:'obodna jedinica na hladnu vodu',m:u[0],kw:u[1],cond:C_PCW,src:SRC.pcw});});
+UNITS.push({fam:'Liebert PCW',kind:'obodna jedinica na hladnu vodu',m:'PW400',kw:400,cond:C_PCW4,src:SRC.pcw});
+[['CR030RC',39.2],['CR040',46.6],['CR052',54],['CR060RC',57],['CR050',57.9]]
+  .forEach(function(u){UNITS.push({fam:'Liebert CRV',kind:'in-row jedinica na hladnu vodu',m:u[0],kw:u[1],cond:C_CRV,src:SRC.crv});});
+function lnk(u,t){return '<a href="'+u+'" target="_blank" rel="noopener">'+t+'</a>';}
+var VEX=[
+ ['Liebert PCW, obodna jedinica na hladnu vodu, 25 do 400 kW ('+lnk(SRC.pcw,'brošura')+')'],
+ ['Liebert CRV, in-row jedinica, 10 do 60 kW ('+lnk(SRC.crv,'brošura')+')','Liebert DCD, hladnjak na stražnjim vratima, do 50 kW ('+lnk(SRC.dcd,'stranica proizvoda')+')','CoolLoop RDHx, hladnjak na stražnjim vratima na hladnu vodu, do 80 kW po ormaru ('+lnk(SRC.rdhx,'objava')+')'],
+ ['CoolChip CDU, jedinice za distribuciju rashladne tekućine do čipa, 70 do 2300 kW ('+lnk(SRC.cdu,'stranica proizvoda')+')','CoolLoop RDHx za dio topline koji ostaje na zraku, do 80 kW po ormaru ('+lnk(SRC.rdhx,'objava')+')']
+];
+var $=function(id){return document.getElementById(id);};
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function fmt(x,d){
+  var neg=x<0, s=Math.abs(x).toFixed(d).split('.');
+  s[0]=s[0].replace(/\B(?=(\d{3})+(?!\d))/g,'.');
+  return (neg?'−':'')+(s.length>1?s[0]+','+s[1]:s[0]);
+}
+function fmtIn(x){ return fmt(x,Number.isInteger(x)?0:Math.min(3,(String(x).split('.')[1]||'').length)); }
+function kw(x){ return fmt(x,x<100&&x%1?1:0); }
+function isExt(){ return $('mode-e').checked; }
+
+function buildInputs(){
+  var h='';
+  GROUPS.forEach(function(g,gi){
+    h+='<details class="panel" id="grp-'+gi+'" open><summary class="h">'+g+'</summary><div class="fields">';
+    SPEC.forEach(function(s){ if(s[10]!==gi)return;
+      h+='<div class="field" data-f="'+s[0]+'"><label for="'+s[1]+'">'+s[2]+'</label><div class="inp '+s[9]+'"><input id="'+s[1]+'" inputmode="'+(s[8]?'numeric':'decimal')+'" value="'+s[4]+'" autocomplete="off">'+(s[3]?'<span>'+s[3]+'</span>':'')+'</div></div>';
+    });
+    if(gi===0){ var fams={}; UNITS.forEach(function(u,k){(fams[u.fam]=fams[u.fam]||[]).push('<option value="'+k+'">'+u.m+', '+String(u.kw).replace('.',',')+' kW</option>');});
+      h+='<div class="field wide"><label for="in-unit">Rashladna jedinica iz Vertivove ponude</label><div class="inp cold"><select id="in-unit"><option value="">ručni unos kapaciteta</option>'+
+        Object.keys(fams).map(function(f){return '<optgroup label="'+f+'">'+fams[f].join('')+'</optgroup>';}).join('')+'</select></div><div class="consts" id="unit-note" hidden></div></div>'; }
+    if(gi===0) h+='<div class="field wide"><span class="lbl" id="lbl-red">Razina redundancije</span><div class="seg" role="radiogroup" aria-labelledby="lbl-red">'+
+      ['N','N+1','2N','2(N+1)'].map(function(v,k){return '<input type="radio" name="red" id="red-'+k+'" value="'+v+'"'+(k===1?' checked':'')+'><label for="red-'+k+'">'+v+'</label>';}).join('')+'</div></div>';
+    if(gi===2) h+='<div class="field wide"><label for="in-gly">Medij</label><div class="inp cold"><select id="in-gly"><option value="0">voda</option><option value="20">voda + 20 % etilen-glikola</option><option value="30">voda + 30 % etilen-glikola</option><option value="40">voda + 40 % etilen-glikola</option></select></div></div>';
+    h+='</div>';
+    if(gi===0) h+='<p class="consts" id="consts"></p>';
+    if(gi===1) h+='<p class="consts">Dodatna opterećenja su gubici UPS-a, rasvjeta i slično, kao postotak IT snage. Rezerva za rast povećava IT snagu.</p>';
+    if(gi===3) h+='<p class="consts">Klima je sinusni model mjesečnih prosjeka. Početne vrijednosti odgovaraju otprilike kontinentalnoj Hrvatskoj.</p>';
+    h+='</details>';
+  });
+  $('inputs').innerHTML=h;
+  if(window.innerWidth<=820){ [2,3,4].forEach(function(g){$('grp-'+g).open=false;}); }
+}
+
+function read(ext){
+  var o={},ok=true;
+  SPEC.forEach(function(s){
+    if(s[10]>0&&!ext)return;
+    var raw=$(s[1]).value.trim().replace(/\s/g,'').replace(',','.').replace('−','-');
+    var x=/^-?(\d+\.?\d*|\.\d+)$/.test(raw)?parseFloat(raw):NaN;
+    var good=isFinite(x)&&(s[6]?x>s[5]:x>=s[5])&&x<=s[7]&&(!s[8]||Number.isInteger(x));
+    var f=document.querySelector('.field[data-f="'+s[0]+'"]');
+    f.classList.toggle('bad',!good);
+    var msg=f.querySelector('.msg');
+    if(!good){ if(!msg){msg=document.createElement('div');msg.className='msg';f.appendChild(msg);}
+      msg.textContent='Unesi '+(s[8]?'cijeli ':'')+'broj '+(s[6]?'veći od ':'od ')+fmtIn(s[5])+' do '+fmtIn(s[7])+'.'; ok=false;
+      var det=f.closest('details'); if(det)det.open=true; }
+    else if(msg){ msg.remove(); }
+    o[s[0]]=x;
+  });
+  o.red=document.querySelector('input[name="red"]:checked').value;
+  o.gly=$('in-gly').value;
+  return ok?o:null;
+}
+
+function squares(need,spare){
+  var h=''; for(var a=0;a<need;a++)h+='<i class="n"></i>'; for(var b=0;b<spare;b++)h+='<i class="s"></i>';
+  return '<div class="sq">'+h+'</div>';
+}
+function row(id,tone,name,val,formula,extra){
+  var o=!!open[id];
+  return '<div class="res '+tone+'"><div class="top"><span class="name">'+name+'</span><button class="how" type="button" data-how="'+id+'" aria-expanded="'+o+'">'+(o?'sakrij izračun':'kako je izračunato')+'</button></div>'+
+    '<div class="val">'+val+'</div>'+(extra||'')+'<div class="formula" id="f-'+id+'"'+(o?'':' hidden')+'>'+esc(formula)+'</div></div>';
+}
+function panel(title,body){ return '<section class="panel"><h2>'+title+'</h2>'+body+'</section>'; }
+function dur(s){ if(s<120)return fmt(s,0)+' <small>s</small>'; var m=Math.floor(s/60); return m+' <small>min</small> '+fmt(s-60*m,0)+' <small>s</small>'; }
+
+function render(){
+  var ext=isExt();
+  [1,2,3,4].forEach(function(g){$('grp-'+g).hidden=!ext;});
+  var i=read(ext);
+  if(!i){ last=null;
+    $('results').innerHTML='<section class="panel"><p class="alert">Ispravi označena polja. Rezultati se prikazuju kad su svi ulazi ispravni.</p></section>';
+    $('sum').innerHTML='<div class="it"><div class="k">Rezultati</div><div class="v">–</div></div>'; return; }
+  var r=calc(i,ext); last={i:i,r:r,ext:ext};
+  var fl=r.fl, n=fmtIn(i.n), p=fmtIn(i.p), Q=kw(r.QIT), Qd=kw(r.QITd), Qt=kw(r.Qtot);
+  $('consts').textContent=ext?'Zrak: ρ iz visine i temperature, cp = 1,006 kJ/kgK. Medij: svojstva prema odabiru u skupini Hidraulika.':'Konstante: zrak ρ = 1,2 kg/m³, cp = 1,006 kJ/kgK; voda c = 4,19 kJ/kgK, ρ = 1000 kg/m³.';
+  var H='', b='';
+  var un=$('in-unit').value===''?null:UNITS[+$('in-unit').value], note=$('unit-note');
+  note.hidden=!un;
+  if(un) note.innerHTML=un.fam+' '+un.m+', '+un.kind+'. Neto osjetni kapacitet '+fmtIn(un.kw)+' kW pri nazivnim uvjetima: '+un.cond+'. Pri drugim temperaturama kapacitet je drugačiji i treba ga potvrditi proizvođačevim odabirom. Izvor: '+lnk(un.src,'brošura na vertiv.com')+'.';
+  var inSm=r.QITd>=100&&r.QITd<=200&&i.n<=24;
+  var sm='<p class="hint">Usporedba s gotovim rješenjem: Vertiv SmartMod Max CW je modularni podatkovni centar na hladnu vodu za 100 do 200 kW IT opterećenja i do 24 ormara ('+lnk(SRC.sm,'stranica proizvoda')+'). Ova konfiguracija ('+fmtIn(i.n)+' ormara, '+kw(r.QITd)+' kW) je <b>'+(inSm?'unutar':'izvan')+'</b> tog raspona.</p>';
+
+  // Opterećenje
+  b=row('q','hot','IT opterećenje',Q+' <small>kW</small>','Q_IT = broj ormara × snaga po ormaru\nQ_IT = '+n+' × '+p+' kW = '+Q+' kW');
+  if(ext) b+=row('qd','hot','Projektno rashladno opterećenje',Qt+' <small>kW</small><span class="sec">IT s rezervom '+Qd+' kW</span>',
+    'Q_IT,proj = Q_IT × (1 + rezerva) = '+Q+' × (1 + '+fmtIn(i.grow)+' %) = '+fmt(r.QITd,1)+' kW\nQ_uk = Q_IT,proj × (1 + dodaci) = '+fmt(r.QITd,1)+' × (1 + '+fmtIn(i.extra)+' %) = '+fmt(r.Qtot,1)+' kW\nZrak kroz servere nosi Q_IT,proj. Voda i rashladne jedinice nose Q_uk.');
+  H+=panel('Opterećenje',b+sm);
+
+  // Zrak
+  var fa=ext?'p = 101325 × (1 − 2,25577·10⁻⁵ × h)^5,256 = '+fmt(r.patm,0)+' Pa (h = '+fmtIn(i.alt)+' m)\nρ = p / (R × T) = '+fmt(r.patm,0)+' / (287,05 × ('+fmtIn(i.Tsup)+' + 273,15)) = '+fmt(r.rhoA,3)+' kg/m³\nV = Q / (ρ × cp × ΔT)\nV = '+fmt(r.QITd,1)+' / ('+fmt(r.rhoA,3)+' × 1,006 × '+fmtIn(i.dTa)+') = '+fmt(r.Va,2)+' m³/s'
+    :'V = Q / (ρ × cp × ΔT)\nV = '+Q+' / (1,2 × 1,006 × '+fmtIn(i.dTa)+') = '+fmt(r.Va,2)+' m³/s';
+  b=row('air','hot','Protok zraka',fmt(r.Va,1)+' <small>m³/s</small><span class="sec">'+fmt(r.VaH,0)+' m³/h</span>',fa+'\n'+fmt(r.Va,2)+' × 3600 = '+fmt(r.VaH,0)+' m³/h (računato s nezaokruženom vrijednošću)',
+    ext?'<div class="facts"><span>gustoća zraka <b>'+fmt(r.rhoA,3)+' kg/m³</b></span><span>po ormaru <b>'+fmt(r.VaH/i.n,0)+' m³/h</b></span></div>':'');
+  if(ext) b+=row('fan','hot','Snaga ventilatora',fmt(r.Pfan,1)+' <small>kW</small>','P = V × Δp / η\nP = '+fmt(r.Va,2)+' m³/s × '+fmtIn(i.dpAir)+' Pa / '+fmt(i.etaF/100,2)+' = '+fmt(r.Pfan*1000,0)+' W = '+fmt(r.Pfan,1)+' kW');
+  H+=panel('Zrak',b);
+
+  // Voda
+  var cs=fmt(fl.c,2), rs=fmt(fl.rho,0);
+  b=row('w','cold','Protok '+(ext&&i.gly!=='0'?'medija':'hladne vode'),fmt(r.m,2)+' <small>kg/s</small><span class="sec">'+fmt(r.VwH,1)+' m³/h</span>',
+    'm = Q / (c × ΔT)\nm = '+Qt+' / ('+cs+' × '+fmtIn(i.dTw)+') = '+fmt(r.m,2)+' kg/s\nV = m / ρ × 3600 = '+fmt(r.m,2)+' / '+rs+' × 3600 = '+fmt(r.VwH,1)+' m³/h'+(ext?'\nMedij: '+fl.name+', c = '+cs+' kJ/kgK, ρ = '+rs+' kg/m³ (približno, pri oko 10 °C)':''));
+  b+=row('d','cold','Promjer cijevi',(r.dn?'DN'+r.dn:'veće od DN300')+'<span class="sec">izračunato '+fmt(r.d,1)+' mm</span>',
+    'd = √(4 × V / (π × v))\nV = '+fmt(r.m,2)+' / '+rs+' = '+fmt(r.Vw,5)+' m³/s\nd = √(4 × '+fmt(r.Vw,5)+' / (π × '+fmtIn(i.v)+')) = '+fmt(r.d/1000,4)+' m = '+fmt(r.d,1)+' mm\n'+
+    (r.dn?'Prvi standardni DN koji nije manji: DN'+r.dn:'Promjer je veći od najvećeg DN u popisu (DN300); treba više paralelnih vodova ili veća brzina.'));
+  if(ext){ var h=r.h, Ds=fmt(h.D/1000,r.dn?3:4);
+    var cmp=r.cmp.length?'<div class="tblwrap"><table><thead><tr><th>Cijev</th><th>Brzina</th><th>Pad tlaka</th><th>Ukupno</th><th>Pumpa</th></tr></thead><tbody>'+r.cmp.map(function(c){
+      return '<tr'+(c.D===r.dn?' class="on"':'')+'><td>DN'+c.D+'</td><td>'+fmt(c.v,2)+' m/s</td><td>'+fmt(c.R,0)+' Pa/m</td><td>'+fmt(c.dp/1000,0)+' kPa</td><td>'+fmt(c.P,2)+' kW</td></tr>';}).join('')+'</tbody></table></div><p class="hint">Manja cijev je jeftinija, ali pad tlaka i snaga pumpe brzo rastu. Zato se promjer ne bira samo po brzini.</p>':'';
+    b+=row('hyd','cold','Pad tlaka i snaga pumpe',fmt(h.P,2)+' <small>kW</small><span class="sec">Δp = '+fmt(h.dp/1000,0)+' kPa</span>',
+      'Unutarnji promjer D = '+Ds+' m\nv = 4 × V / (π × D²) = 4 × '+fmt(r.Vw,5)+' / (π × '+Ds+'²) = '+fmt(h.v,2)+' m/s\nRe = ρ × v × D / μ = '+rs+' × '+fmt(h.v,2)+' × '+Ds+' / '+fmt(fl.mu*1000,2)+'·10⁻³ = '+fmt(h.Re,0)+'\n'+
+      (h.Re<2300?'λ = 64 / Re = '+fmt(h.lam,4)+' (laminarno strujanje)':'λ = 0,25 / [log₁₀(ε / (3,7 × D) + 5,74 / Re^0,9)]² = '+fmt(h.lam,4)+' (Swamee-Jain, ε = 0,045 mm)')+
+      '\nR = λ / D × ρ × v² / 2 = '+fmt(h.R,0)+' Pa/m\nΔp_cijevi = R × L × (1 + lokalni otpori) = '+fmt(h.R,0)+' × '+fmtIn(i.L)+' × (1 + '+fmtIn(i.loc)+' %) = '+fmt(h.dpPipe/1000,1)+' kPa\nΔp = Δp_cijevi + Δp_opreme = '+fmt(h.dpPipe/1000,1)+' + '+fmtIn(i.dpEq)+' = '+fmt(h.dp/1000,1)+' kPa\nP = V × Δp / η = '+fmt(r.Vw,5)+' × '+fmt(h.dp,0)+' / '+fmt(i.etaP/100,2)+' = '+fmt(h.P*1000,0)+' W',
+      '<div class="facts"><span>stvarna brzina <b>'+fmt(h.v,2)+' m/s</b></span><span>Re <b>'+fmt(h.Re,0)+'</b></span><span>λ <b>'+fmt(h.lam,4)+'</b></span><span>pad tlaka <b>'+fmt(h.R,0)+' Pa/m</b></span></div>'+cmp);
+  }
+  H+=panel(ext&&i.gly!=='0'?'Rashladni medij':'Hladna voda',b);
+
+  // Jedinice
+  var tot=r.units[i.red], N=r.N, g;
+  if(i.red==='N') g=[['',N,0]]; else if(i.red==='N+1') g=[['',N,1]];
+  else if(i.red==='2N') g=[['Sustav A',N,0],['Sustav B',0,N]]; else g=[['Sustav A',N,1],['Sustav B',0,N+1]];
+  var ux=(un?'<div class="facts"><span>model <b>'+un.fam+' '+un.m+'</b></span><span>nazivno <b>'+fmtIn(un.kw)+' kW</b></span></div>':'')+'<div class="units">'+(tot>MAXSQ?'<p class="hint">Previše jedinica za crtanje ('+tot+'): '+N+' potrebnih i '+(tot-N)+' rezervnih.</p>':
+    g.map(function(x){return '<div class="urow">'+(x[0]?'<span class="tag">'+x[0]+'</span>':'')+squares(x[1],x[2])+'</div>';}).join(''))+'</div>'+
+    '<div class="legend"><span><span class="sq"><i class="n"></i></span>potrebne (N)</span><span><span class="sq"><i class="s"></i></span>rezervne</span></div>'+
+    '<div class="tblwrap"><table><thead><tr><th>Razina</th><th>Jedinica</th><th>Instalirano</th><th>Opterećenje jedinica</th></tr></thead><tbody>'+Object.keys(r.units).map(function(k){
+      return '<tr'+(k===i.red?' class="on"':'')+'><td>'+k+'</td><td>'+r.units[k]+'</td><td>'+fmt(r.units[k]*i.cap,0)+' kW</td><td>'+fmt(100*r.Qtot/(r.units[k]*i.cap),0)+' %</td></tr>';}).join('')+'</tbody></table></div>'+
+    '<p class="hint">Opterećenje jedinica vrijedi kad rade sve instalirane jedinice i ravnomjerno dijele opterećenje.</p>';
+  H+=panel('Rashladne jedinice',row('u','cold','Broj rashladnih jedinica',tot+' <small>jedinica za '+i.red+'</small><span class="sec">N = '+N+'</span>',
+    'N = Q / kapacitet jedinice, zaokruženo naviše\nN = '+Qt+' / '+fmtIn(i.cap)+' = '+fmt(r.Qtot/i.cap,2)+' → '+N+'\nN+1 = '+N+' + 1 = '+(N+1)+'\n2N = 2 × '+N+' = '+(2*N)+'\n2(N+1) = 2 × ('+N+' + 1) = '+(2*(N+1))+
+    '\nOpterećenje jedinica = Q / (broj jedinica × kapacitet) = '+Qt+' / ('+tot+' × '+fmtIn(i.cap)+') = '+fmt(100*r.Qtot/(tot*i.cap),0)+' %',ux));
+
+  // Energija
+  if(ext){
+    var parts=[['IT oprema',r.QITd,'--c-it'],['Ostalo (UPS, rasvjeta)',r.Paux,'--c-aux'],['Rashladnik',r.Pch,'--cold'],['Ventilatori',r.Pfan,'--hot'],['Pumpa',r.h.P,'--c-pump']];
+    var bar='<div class="pbar" role="img" aria-label="Raspodjela električne snage">'+parts.map(function(x){return x[1]>0?'<i style="flex:'+x[1].toFixed(3)+' 0 0;background:var('+x[2]+')"></i>':'';}).join('')+'</div>'+
+      '<div class="legend">'+parts.map(function(x){return '<span><i class="sw" style="background:var('+x[2]+')"></i>'+x[0]+' <b>'+fmt(x[1],1)+' kW</b></span>';}).join('')+'</div>';
+    b=row('pue','','Snaga i PUE u projektnoj točki',fmt(r.PUE,2)+' <small>PUE</small><span class="sec">ukupno '+fmt(r.Ptot,1)+' kW</span>',
+      'P_rashladnik = Q_uk / COP = '+fmt(r.Qtot,1)+' / '+fmtIn(i.COP)+' = '+fmt(r.Pch,1)+' kW\nP_ostalo = Q_IT,proj × dodaci = '+fmt(r.QITd,1)+' × '+fmtIn(i.extra)+' % = '+fmt(r.Paux,1)+' kW\nP_uk = IT + ostalo + rashladnik + ventilatori + pumpa\nP_uk = '+fmt(r.QITd,1)+' + '+fmt(r.Paux,1)+' + '+fmt(r.Pch,1)+' + '+fmt(r.Pfan,1)+' + '+fmt(r.h.P,1)+' = '+fmt(r.Ptot,1)+' kW\nPUE = P_uk / P_IT = '+fmt(r.Ptot,1)+' / '+fmt(r.QITd,1)+' = '+fmt(r.PUE,2),bar);
+    b+=row('fc','cold','Slobodno hlađenje',fmt(r.hfc,0)+' <small>h/god</small><span class="sec">'+fmt(100*r.ffc,0)+' % godine</span>',
+      'T_gr = T_polaza − približenje = '+fmtIn(i.Tw)+' − '+fmtIn(i.appr)+' = '+fmt(r.Tfc,1)+' °C\nVanjska temperatura: T(t) = T_sr − A × cos(2π × t / 12 mj.), najhladnije sredinom siječnja\nUdio godine s T ispod T_gr = 1 − arccos((T_gr − T_sr) / A) / π\n= 1 − arccos(('+fmt(r.Tfc,1)+' − '+fmtIn(i.Tm)+') / '+fmtIn(i.A)+') / π = '+fmt(r.ffc,3)+'\nSati = '+fmt(r.ffc,3)+' × 8760 = '+fmt(r.hfc,0)+' h',
+      '<div class="chart" id="chart-fc"></div><div class="legend"><span><i class="sw" style="background:var(--hot)"></i>vanjska temperatura, °C</span><span><i class="sw" style="background:var(--cold-soft);border:1px solid var(--cold)"></i>razdoblje slobodnog hlađenja</span></div><p class="hint">Model računa samo potpuno slobodno hlađenje i ne vidi dnevne promjene temperature ni djelomično slobodno hlađenje.</p>');
+    b+=row('en','','Godišnja energija hlađenja',fmt(r.Ecool/1000,0)+' <small>MWh</small><span class="sec">'+fmt(r.cost,0)+' € godišnje</span>',
+      'E = (P_vent + P_pumpa) × 8760 + P_rashladnik × 8760 × (1 − udio slobodnog hlađenja)\nE = ('+fmt(r.Pfan,1)+' + '+fmt(r.h.P,1)+') × 8760 + '+fmt(r.Pch,1)+' × 8760 × (1 − '+fmt(r.ffc,3)+') = '+fmt(r.Ecool,0)+' kWh\nTrošak = E × cijena = '+fmt(r.Ecool,0)+' × '+fmtIn(i.price)+' = '+fmt(r.cost,0)+' €\nUšteda = P_rashladnik × sati slobodnog hlađenja × cijena = '+fmt(r.Pch,1)+' × '+fmt(r.hfc,0)+' × '+fmtIn(i.price)+' = '+fmt(r.saved,0)+' €\nGodišnji PUE = (E_IT + E_ostalo + E_hlađenja) / E_IT = '+fmt(r.PUEyr,2),
+      '<div class="facts"><span>ušteda slobodnog hlađenja <b>'+fmt(r.saved,0)+' €/god</b></span><span>godišnji PUE <b>'+fmt(r.PUEyr,2)+'</b></span></div><p class="hint">Pretpostavka: puno projektno opterećenje svih 8760 sati u godini.</p>');
+    H+=panel('Energija',b);
+
+    H+=panel('Ispad hlađenja',row('fail','hot','Vrijeme do porasta temperature zraka za '+fmtIn(i.dTallow)+' K',dur(r.tfail),
+      't = ρ × cp × V_prostora × ΔT / Q_IT\nt = '+fmt(r.rhoA,3)+' × 1,006 × '+fmtIn(i.Vroom)+' × '+fmtIn(i.dTallow)+' / '+fmt(r.QITd,1)+' = '+fmt(r.tfail,1)+' s\nBrzina porasta = '+fmt(i.dTallow/r.tfail,2)+' K/s',
+      '<p class="hint">Računa se samo toplinski kapacitet zraka u prostoru. Masa opreme, zidova i vode u sustavu usporava porast, pa je stvarno vrijeme dulje. Brojka pokazuje zašto ventilatori i pumpe idu na UPS.</p>'));
+  }
+
+  // Preporuka
+  H+=panel('Vrsta hlađenja','<div class="res"><div class="top"><span class="name">Preporuka prema snazi po ormaru</span><button class="how" type="button" data-how="r" aria-expanded="'+!!open.r+'">'+(open.r?'sakrij izračun':'kako je izračunato')+'</button></div><div class="reco">'+RECO[r.reco]+'</div>'+
+    '<div class="scale">'+['do 15 kW<br>zrak','15 do 40 kW<br>in-row ili stražnja vrata','iznad 40 kW<br>tekućina do čipa'].map(function(t,k){return '<div'+(k===r.reco?' class="on"':'')+'>'+t+'</div>';}).join('')+'</div>'+
+    '<p class="hint">Granice su orijentacijske, ne norma. Stvarni izbor ovisi o opremi i prostoru.</p><p class="hint"><b>Primjeri iz Vertivove ponude za ovo područje:</b></p><ul class="vex">'+VEX[r.reco].map(function(t){return '<li>'+t+'</li>';}).join('')+'</ul><div class="formula" id="f-r"'+(open.r?'':' hidden')+'>'+esc('Snaga po ormaru = '+p+' kW\n'+['do 15 kW','više od 15, do 40 kW','iznad 40 kW'][r.reco]+' → '+RECO[r.reco].toLowerCase()+'\nGranice 15 i 40 kW su orijentacijske.')+'</div></div>');
+
+  $('results').innerHTML=H;
+  var S=[['h','Opterećenje',Qt+' kW'],['h','Zrak',fmt(r.VaH,0)+' m³/h'],['c','Voda',fmt(r.VwH,1)+' m³/h'],['c','Cijev',r.dn?'DN'+r.dn:'> DN300'],['c','Jedinice',tot+' ('+i.red+')']];
+  if(ext) S.push(['c','Pumpa',fmt(r.h.P,2)+' kW'],['','PUE',fmt(r.PUE,2)]);
+  $('sum').innerHTML=S.map(function(x){return '<div class="it '+x[0]+'"><div class="k">'+x[1]+'</div><div class="v">'+x[2]+'</div></div>';}).join('');
+  drawYear();
+}
+
+function drawYear(){
+  var el=$('chart-fc'); if(!el||!last||!last.ext)return;
+  var i=last.i, r=last.r, W=Math.max(240,el.clientWidth||600), Hh=190, L=30, R=8, T=10, B=22;
+  var lo=Math.min(i.Tm-i.A,r.Tfc)-2, hi=Math.max(i.Tm+i.A,r.Tfc)+2, step=(hi-lo)>30?10:5;
+  var x=function(t){return L+(W-L-R)*t/12;}, y=function(v){return T+(Hh-T-B)*(hi-v)/(hi-lo);};
+  var s='<svg viewBox="0 0 '+W+' '+Hh+'" role="img" aria-label="Vanjska temperatura kroz godinu i granica slobodnog hlađenja">';
+  for(var v=Math.ceil(lo/step)*step;v<=hi;v+=step){ s+='<line class="g" x1="'+L+'" x2="'+(W-R)+'" y1="'+y(v).toFixed(1)+'" y2="'+y(v).toFixed(1)+'"/><text class="t" x="'+(L-5)+'" y="'+(y(v)+4).toFixed(1)+'" text-anchor="end">'+fmt(v,0)+'</text>'; }
+  var cur='', ar='M'+x(0).toFixed(1)+','+y(r.Tfc).toFixed(1);
+  for(var k=0;k<=72;k++){ var t=k/6, Tt=i.Tm-i.A*Math.cos(2*Math.PI*(t-0.5)/12);
+    cur+=(k?'L':'M')+x(t).toFixed(1)+','+y(Tt).toFixed(1); ar+='L'+x(t).toFixed(1)+','+y(Math.min(Tt,r.Tfc)).toFixed(1); }
+  ar+='L'+x(12).toFixed(1)+','+y(r.Tfc).toFixed(1)+'Z';
+  s+='<path class="ar" d="'+ar+'"/><path class="cur" d="'+cur+'"/><line class="th" x1="'+L+'" x2="'+(W-R)+'" y1="'+y(r.Tfc).toFixed(1)+'" y2="'+y(r.Tfc).toFixed(1)+'"/>';
+  s+='<text class="tl" x="'+((L+W-R)/2).toFixed(1)+'" y="'+(y(r.Tfc)-5).toFixed(1)+'" text-anchor="middle">granica '+fmt(r.Tfc,1)+' °C</text>';
+  ['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII'].forEach(function(mn,k){ s+='<text class="t" x="'+x(k+0.5).toFixed(1)+'" y="'+(Hh-6)+'" text-anchor="middle">'+mn+'</text>'; });
+  el.innerHTML=s+'</svg>';
+}
+
+function summaryText(){
+  if(!last)return '';
+  var i=last.i, r=last.r, t=['Preliminarno dimenzioniranje hlađenja ('+(last.ext?'prošireni':'osnovni')+' način)',
+    'Ormari: '+fmtIn(i.n)+' × '+fmtIn(i.p)+' kW, IT opterećenje '+kw(r.QIT)+' kW',
+    'Rashladno opterećenje: '+kw(r.Qtot)+' kW',
+    'Protok zraka: '+fmt(r.Va,1)+' m³/s ('+fmt(r.VaH,0)+' m³/h)',
+    'Protok vode: '+fmt(r.m,2)+' kg/s ('+fmt(r.VwH,1)+' m³/h)',
+    'Cijev: '+(r.dn?'DN'+r.dn:'veće od DN300')+' (izračunato '+fmt(r.d,1)+' mm)',
+    'Rashladne jedinice: '+r.units[i.red]+' za '+i.red+' (N = '+r.N+', jedinica '+($('in-unit').value!==''?UNITS[+$('in-unit').value].fam+' '+UNITS[+$('in-unit').value].m+', ':'')+fmtIn(i.cap)+' kW)',
+    'Vrsta hlađenja: '+RECO[r.reco]];
+  if(last.ext) t.push('Pumpa: '+fmt(r.h.P,2)+' kW pri '+fmt(r.h.dp/1000,0)+' kPa, ventilatori: '+fmt(r.Pfan,1)+' kW',
+    'PUE u projektnoj točki: '+fmt(r.PUE,2)+', godišnji: '+fmt(r.PUEyr,2),
+    'Slobodno hlađenje: '+fmt(r.hfc,0)+' h/god',
+    'Godišnja energija hlađenja: '+fmt(r.Ecool/1000,0)+' MWh, '+fmt(r.cost,0)+' €');
+  t.push('Preliminarna procjena s pojednostavljenjima. Nije projektni alat.');
+  return t.join('\n');
+}
+
+buildInputs();
+document.addEventListener('input',function(e){
+  if(e.target.id==='in-unit'&&e.target.value!==''){ $('in-cap').value=String(UNITS[+e.target.value].kw).replace('.',','); }
+  if(e.target.id==='in-cap'){ $('in-unit').value=''; }
+  render();
+});
+document.addEventListener('click',function(e){
+  var b=e.target.closest('button'); if(!b)return;
+  if(b.dataset.how){ var id=b.dataset.how, f=$('f-'+id); open[id]=!open[id]; f.hidden=!open[id];
+    b.setAttribute('aria-expanded',String(!!open[id])); b.textContent=open[id]?'sakrij izračun':'kako je izračunato'; }
+  else if(b.dataset.preset){ var q=b.dataset.preset.split(','); $('in-n').value=q[0]; $('in-p').value=q[1]; render(); }
+  else if(b.id==='btn-reset'){ SPEC.forEach(function(s){$(s[1]).value=s[4];}); $('red-1').checked=true; $('in-gly').value='0'; $('in-unit').value=''; render(); }
+  else if(b.id==='btn-copy'){ var txt=summaryText(); if(!txt)return;
+    var fb=function(){ var ta=$('copy-fb'); ta.hidden=false; ta.value=txt; ta.focus(); ta.select(); };
+    var done=function(){ b.textContent='Kopirano'; setTimeout(function(){b.textContent='Kopiraj sažetak';},1500); };
+    try{ navigator.clipboard.writeText(txt).then(done,fb); }catch(err){ fb(); } }
+});
+var rz; window.addEventListener('resize',function(){ clearTimeout(rz); rz=setTimeout(drawYear,120); });
+render();
+</script>
+</body>
+</html>
